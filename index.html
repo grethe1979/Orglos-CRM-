@@ -2224,21 +2224,61 @@ const ACT_LABELS = {telefon:'Telefon', epost:'E-post', mote:'Møte', annet:'Anne
 
 function buildActivityLog(activities){
   if(!activities||!activities.length) return '<div style="font-size:12px;color:var(--text2);padding:6px 0">Ingen aktiviteter registrert enda.</div>';
-  return [...activities].reverse().map(a=>`
-    <div class="act-item act-type-${a.type}">
+  return [...activities].map((a,i)=>({...a,origIdx:i})).reverse().map(a=>`
+    <div class="act-item act-type-${a.type}" onclick="editActivity(${a.origIdx})" style="cursor:pointer" title="Klikk for å redigere">
       <div class="act-icon">${ACT_ICONS[a.type]||'•'}</div>
       <div class="act-body">
         <div style="font-weight:500">${ACT_LABELS[a.type]||a.type}${a.note?' — '+a.note:''}</div>
         <div class="act-meta">${a.date||''} · ${a.who?founderById(a.who).name:''}</div>
       </div>
+      <div style="font-size:10px;color:var(--text2);margin-left:auto;padding-left:6px;align-self:center">✎</div>
     </div>`).join('');
 }
 
+let editingActivityIndex=null;
+
 function showAddActivity(){
+  editingActivityIndex=null;
   const form=document.getElementById('add-activity-form');
-  form.style.display=form.style.display==='none'?'block':'none';
+  const isOpen=form.style.display!=='none';
+  if(isOpen){form.style.display='none';return;}
+  form.style.display='block';
+  document.getElementById('act-type').value='telefon';
   document.getElementById('act-date').value=new Date().toISOString().slice(0,10);
   document.getElementById('act-note').value='';
+  const del=document.getElementById('act-delete-btn');
+  if(del) del.style.display='none';
+}
+
+function editActivity(idx){
+  const existing=crms.find(c=>c.id===editingId);
+  const activities=existing?.activities||[];
+  const a=activities[idx];
+  if(!a) return;
+  editingActivityIndex=idx;
+  const form=document.getElementById('add-activity-form');
+  form.style.display='block';
+  document.getElementById('act-type').value=a.type||'telefon';
+  document.getElementById('act-date').value=a.date||'';
+  document.getElementById('act-note').value=a.note||'';
+  const del=document.getElementById('act-delete-btn');
+  if(del) del.style.display='inline-block';
+  form.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+async function deleteActivity(){
+  if(!editingId||editingActivityIndex===null) return;
+  if(!confirm('Slette denne aktiviteten?')) return;
+  const existing=crms.find(c=>c.id===editingId);
+  const activities=[...(existing?.activities||[])];
+  activities.splice(editingActivityIndex,1);
+  await db.from('crms').update({activities}).eq('id',editingId);
+  const idx=crms.findIndex(c=>c.id===editingId);
+  if(idx>=0) crms[idx]={...crms[idx],activities};
+  editingActivityIndex=null;
+  document.getElementById('add-activity-form').style.display='none';
+  document.getElementById('act-log-list').innerHTML=buildActivityLog(activities);
+  showToast('Aktivitet slettet');
 }
 
 async function saveActivity(){
@@ -2248,17 +2288,22 @@ async function saveActivity(){
   const note=document.getElementById('act-note').value.trim();
   const who=document.getElementById('f-cwho').value;
 
-  const newAct={type, date, note, who, ts:Date.now()};
   const existing=crms.find(c=>c.id===editingId);
-  const activities=[...(existing?.activities||[]), newAct];
+  const activities=[...(existing?.activities||[])];
+  const isEdit=editingActivityIndex!==null;
+  if(isEdit){
+    activities[editingActivityIndex]={...activities[editingActivityIndex],type,date,note,who};
+  } else {
+    activities.push({type,date,note,who,ts:Date.now()});
+  }
 
   await db.from('crms').update({activities}).eq('id',editingId);
-  // Oppdater lokalt i crms-arrayet slik at endringen vises ved gjenåpning
   const idx=crms.findIndex(c=>c.id===editingId);
-  if(idx>=0) crms[idx]={...crms[idx], activities};
+  if(idx>=0) crms[idx]={...crms[idx],activities};
+  editingActivityIndex=null;
   document.getElementById('add-activity-form').style.display='none';
   document.getElementById('act-log-list').innerHTML=buildActivityLog(activities);
-  showToast('Aktivitet lagret');
+  showToast(isEdit?'Aktivitet oppdatert':'Aktivitet lagret');
 }
 
 function buildFollowupBadge(followup, followupNote, id){
@@ -2818,9 +2863,12 @@ function buildCRMForm(e={}){
         <div class="field-label" style="margin-top:0">Notat</div>
         <textarea id="act-note" placeholder="Hva ble snakket om?" style="height:60px"></textarea>
       </div>
-      <div style="display:flex;justify-content:flex-end;gap:6px">
-        <button type="button" class="btn-cancel" onclick="document.getElementById('add-activity-form').style.display='none'">Avbryt</button>
-        <button type="button" class="btn-save" onclick="saveActivity()">Lagre</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+        <button type="button" id="act-delete-btn" class="btn-danger" style="display:none;font-size:11px;padding:3px 10px" onclick="deleteActivity()">Slett</button>
+        <div style="display:flex;gap:6px;margin-left:auto">
+          <button type="button" class="btn-cancel" onclick="document.getElementById('add-activity-form').style.display='none'">Avbryt</button>
+          <button type="button" class="btn-save" onclick="saveActivity()">Lagre</button>
+        </div>
       </div>
     </div>
     <div class="act-log" id="act-log-list">${buildActivityLog(e.activities||[])}</div>
@@ -3197,9 +3245,9 @@ function openBrreg(){
   const name=(document.getElementById('f-name')||{value:''}).value.trim();
   let url;
   if(orgnr&&orgnr.length===9){
-    url=`https://data.brreg.no/enhetsregisteret/api/enheter/${orgnr}`;
+    url=`https://www.brreg.no/lag-og-foreninger/?orgnr=${orgnr}`;
   } else if(name){
-    url=`https://data.brreg.no/enhetsregisteret/oppslag/enheter?navn=${encodeURIComponent(name)}`;
+    url=`https://www.brreg.no/lag-og-foreninger/?navn=${encodeURIComponent(name)}`;
   } else {
     alert('Legg inn org.nr eller navn først.');
     return;
