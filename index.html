@@ -3241,8 +3241,13 @@ async function doImport(){
 }
 
 function openBrreg(){
-  const orgnr=(document.getElementById('f-orgnr')||{value:''}).value.replace(/\s/g,'');
-  const name=(document.getElementById('f-name')||{value:''}).value.trim();
+  let orgnr=(document.getElementById('f-orgnr')||{value:''}).value.replace(/\D/g,'');
+  if(!orgnr&&editingId){
+    const entry=crms.find(c=>c.id===editingId);
+    orgnr=(entry?.orgnr||'').replace(/\D/g,'');
+  }
+  const name=(document.getElementById('f-name')||{value:''}).value.trim()||
+    (editingId&&crms.find(c=>c.id===editingId)?.name)||'';
   let url;
   if(orgnr&&orgnr.length===9){
     url=`https://virksomhet.brreg.no/nb/oppslag/enheter/${orgnr}`;
