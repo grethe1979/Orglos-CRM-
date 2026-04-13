@@ -3245,9 +3245,9 @@ function openBrreg(){
   const name=(document.getElementById('f-name')||{value:''}).value.trim();
   let url;
   if(orgnr&&orgnr.length===9){
-    url=`https://www.brreg.no/lag-og-foreninger/?orgnr=${orgnr}`;
+    url=`https://virksomhet.brreg.no/nb/oppslag/enheter/${orgnr}`;
   } else if(name){
-    url=`https://www.brreg.no/lag-og-foreninger/?navn=${encodeURIComponent(name)}`;
+    url=`https://virksomhet.brreg.no/nb/oppslag/enheter?navn=${encodeURIComponent(name)}`;
   } else {
     alert('Legg inn org.nr eller navn først.');
     return;
